@@ -1,1 +1,178 @@
+import tkinter as tk
+from tkinter import messagebox
+import graphviz
+import os
 
+# ==========================================
+# 1. GENERACIÓN DEL DIAGRAMA CON GRAPHVIZ
+# ==========================================
+def generar_diagrama_estados():
+    dot = graphviz.Digraph(comment='Máquina de Turing - Desplazar Derecha')
+    dot.attr(rankdir='LR', size='8,5') # LR = Left to Right (de izquierda a derecha)
+
+    # Definir nodos (estados)
+    dot.node('q0', 'q0\n(Inicio)', shape='circle', style='filled', fillcolor='lightblue')
+    dot.node('qA', 'qA\n(Llevo a)', shape='circle')
+    dot.node('qB', 'qB\n(Llevo b)', shape='circle')
+    dot.node('halt', 'halt\n(Fin)', shape='doublecircle', style='filled', fillcolor='lightgreen')
+
+    # Definir aristas (transiciones) -> formato: leo / escribo , movimiento
+    dot.edge('q0', 'qA', label=' a / _ , R ')
+    dot.edge('q0', 'qB', label=' b / _ , R ')
+    
+    dot.edge('qA', 'qA', label=' a / a , R ')
+    dot.edge('qA', 'qB', label=' b / a , R ')
+    dot.edge('qA', 'halt', label=' _ / a , R ')
+    
+    dot.edge('qB', 'qA', label=' a / b , R ')
+    dot.edge('qB', 'qB', label=' b / b , R ')
+    dot.edge('qB', 'halt', label=' _ / b , R ')
+
+    # Guardar el diagrama en un archivo PNG
+    nombre_archivo = 'diagrama_mt'
+    try:
+        dot.render(nombre_archivo, format='png', cleanup=True)
+        print(f"Diagrama de estados generado con éxito: {nombre_archivo}.png")
+    except graphviz.backend.execute.ExecutableNotFound:
+        print("Advertencia: No se pudo renderizar Graphviz. Asegúrate de tener el software instalado en tu PC.")
+
+
+# ==========================================
+# 2. INTERFAZ GRÁFICA CON TKINTER
+# ==========================================
+class SimuladorMT:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Simulador Máquina de Turing - Ejercicio 1")
+        self.root.geometry("600x300")
+        self.root.configure(padx=20, pady=20)
+
+        # Diccionario de transiciones exacto al ejercicio anterior
+        self.transiciones = {
+            ("q0", "a"): ("qA", "_", "R"),
+            ("q0", "b"): ("qB", "_", "R"),
+            ("q0", "_"): ("halt", "_", "R"),
+            
+            ("qA", "a"): ("qA", "a", "R"),
+            ("qA", "b"): ("qB", "a", "R"),
+            ("qA", "_"): ("halt", "a", "R"),
+            
+            ("qB", "a"): ("qA", "b", "R"),
+            ("qB", "b"): ("qB", "b", "R"),
+            ("qB", "_"): ("halt", "b", "R"),
+        }
+
+        self.simbolo_blanco = "_"
+        self.estado_actual = "q0"
+        self.cinta = []
+        self.posicion = 0
+        self.labels_cinta = [] # Para almacenar los widgets visuales de la cinta
+
+        self.crear_widgets()
+
+    def crear_widgets(self):
+        # Frame de Entrada
+        frame_input = tk.Frame(self.root)
+        frame_input.pack(pady=10)
+
+        tk.Label(frame_input, text="Cadena Inicial (a y b):", font=("Arial", 12)).pack(side=tk.LEFT)
+        self.entry_cadena = tk.Entry(frame_input, font=("Arial", 12), width=15)
+        self.entry_cadena.pack(side=tk.LEFT, padx=10)
+        self.entry_cadena.insert(0, "aba") # Valor por defecto
+        
+        tk.Button(frame_input, text="Cargar Cinta", command=self.cargar_cinta, bg="#4CAF50", fg="white").pack(side=tk.LEFT)
+
+        # Labels de Información
+        self.lbl_estado = tk.Label(self.root, text="Estado actual: -", font=("Arial", 14, "bold"), fg="blue")
+        self.lbl_estado.pack(pady=5)
+
+        # Frame de la Cinta
+        self.frame_cinta = tk.Frame(self.root, bg="gray", bd=2)
+        self.frame_cinta.pack(pady=20)
+
+        # Frame de Botones de Control
+        frame_controles = tk.Frame(self.root)
+        frame_controles.pack(pady=10)
+
+        self.btn_paso = tk.Button(frame_controles, text="Siguiente Paso", command=self.ejecutar_paso, state=tk.DISABLED, font=("Arial", 12))
+        self.btn_paso.pack(side=tk.LEFT, padx=10)
+
+    def cargar_cinta(self):
+        cadena = self.entry_cadena.get()
+        if not all(c in "ab" for c in cadena):
+            messagebox.showerror("Error", "La cadena solo puede contener 'a' y 'b'.")
+            return
+
+        # Inicializamos variables
+        # Agregamos algunos blancos extras a la derecha para ver el desplazamiento
+        self.cinta = list(cadena) + [self.simbolo_blanco] * 3 
+        self.posicion = 0
+        self.estado_actual = "q0"
+        
+        self.dibujar_cinta()
+        self.actualizar_estado()
+        self.btn_paso.config(state=tk.NORMAL)
+
+    def dibujar_cinta(self):
+        # Limpiar la cinta anterior
+        for widget in self.frame_cinta.winfo_children():
+            widget.destroy()
+        self.labels_cinta = []
+
+        # Crear los cuadros de la cinta
+        for i, simbolo in enumerate(self.cinta):
+            # Si es la posición del cabezal, la pintamos de amarillo (color piel suave) o naranja claro
+            color_fondo = "#FFD700" if i == self.posicion else "white" 
+            
+            lbl = tk.Label(self.frame_cinta, text=simbolo, font=("Courier", 18, "bold"), 
+                           width=3, height=1, bg=color_fondo, relief="solid", bd=1)
+            lbl.pack(side=tk.LEFT, padx=2, pady=2)
+            self.labels_cinta.append(lbl)
+
+    def actualizar_estado(self):
+        self.lbl_estado.config(text=f"Estado actual: {self.estado_actual}")
+
+    def ejecutar_paso(self):
+        if self.estado_actual == "halt":
+            messagebox.showinfo("Fin", "La máquina ha terminado (Estado Halt).")
+            self.btn_paso.config(state=tk.DISABLED)
+            return
+
+        # Expandir la cinta si llegamos al final visual
+        if self.posicion >= len(self.cinta):
+            self.cinta.append(self.simbolo_blanco)
+
+        simbolo_leido = self.cinta[self.posicion]
+        accion = self.transiciones.get((self.estado_actual, simbolo_leido))
+
+        if accion:
+            nuevo_estado, simbolo_escrito, direccion = accion
+            
+            # Aplicar la acción
+            self.cinta[self.posicion] = simbolo_escrito
+            self.estado_actual = nuevo_estado
+            
+            if direccion == "R":
+                self.posicion += 1
+                
+            self.dibujar_cinta()
+            self.actualizar_estado()
+            
+            if self.estado_actual == "halt":
+                self.btn_paso.config(state=tk.DISABLED)
+                messagebox.showinfo("Proceso Terminado", "La cadena se ha desplazado correctamente.")
+        else:
+            messagebox.showerror("Error", f"No hay transición para el estado {self.estado_actual} leyendo '{simbolo_leido}'")
+            self.btn_paso.config(state=tk.DISABLED)
+
+# ==========================================
+# 3. EJECUCIÓN PRINCIPAL
+# ==========================================
+if __name__ == "__main__":
+    # 1. Generamos el diagrama estático
+    generar_diagrama_estados()
+    
+    # 2. Levantamos la interfaz de usuario
+    root = tk.Tk()
+    app = SimuladorMT(root)
+    root.mainloop()
